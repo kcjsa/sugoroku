@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>EduTetsu 完全版 - 47都道府県すごろく</title>
+<style>
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background:#f4f4f9; margin:0; }
+  #container { display:flex; height: 100vh; }
+  #game-area { flex: 3; background: #e0f0ff; position: relative; }
+  #ui-area { flex: 1; background: #fff; padding: 15px; box-sizing: border-box; overflow-y: auto; border-left: 2px solid #ccc; }
+  canvas { background: #b0d4f1; display: block; margin: 20px auto; border: 2px solid #333; border-radius: 8px; }
+  h1 { margin-top: 0; color:#004080; text-align:center; }
+  #log { height: 250px; background: #eee; overflow-y: auto; border: 1px solid #ccc; padding: 5px; font-size: 14px; line-height:1.3em; }
+  button { font-size: 16px; padding: 8px 12px; margin: 8px 5px; cursor: pointer; border-radius: 5px; border: none; background:#0078d7; color:#fff; transition: 0.3s; }
+  button:disabled { background:#aaa; cursor: not-allowed; }
+  button:hover:not(:disabled) { background:#005a9e; }
+  #player-info { margin-bottom: 10px; }
+  .property { background: #d0ebff; border: 1px solid #0078d7; border-radius: 4px; padding: 3px 6px; margin: 2px 0; font-size: 14px; }
+  #cards { margin-top: 10px; }
+  .card { display: inline-block; background: #fff; border: 1px solid #0078d7; border-radius: 5px; padding: 5px 10px; margin: 3px; cursor: pointer; user-select:none; }
+  .card.used { opacity: 0.4; cursor: default; }
+  #quiz-box { margin-top: 15px; background:#e7f3ff; padding:10px; border-radius: 8px; display:none; }
+  #quiz-box p { margin: 6px 0; font-weight: bold; }
+  #quiz-answer { width: 80%; padding: 5px; font-size: 16px; }
+</style>
+</head>
+<body>
+<div id="container">
+  <div id="game-area">
+    <h1>EduTetsu - 教育すごろく完全版</h1>
+    <canvas id="mapCanvas" width="900" height="700"></canvas>
+  </div>
+  <div id="ui-area">
+    <div id="player-info"></div>
+    <button id="rollDiceBtn">🎲 サイコロを振る</button>
+    <button id="endTurnBtn" disabled>ターン終了</button>
+    <button id="buyPropertyBtn" disabled>物件購入</button>
+    <div id="cards"></div>
+
+    <div id="quiz-box">
+      <p id="quiz-question"></p>
+      <input type="text" id="quiz-answer" placeholder="答えを入力" autocomplete="off" />
+      <button id="submitQuizBtn">回答する</button>
+      <p id="quiz-feedback"></p>
+    </div>
+
+    <h3>ゲームログ</h3>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+// === 都道府県駅データ ===
+const stations = [
+  { name:"北海道", x:450, y:60, price:3500 },
+  { name:"青森", x:510, y:130, price:2200 },
+  { name:"岩手", x:560, y:170, price:2100 },
+  { name:"宮城", x:600, y:200, price:2300 },
+  { name:"秋田", x:540, y:210, price:2000 },
+  { name:"山形", x:590, y:230, price:2200 },
+  { name:"福島", x:620, y:260, price:2400 },
+  { name:"茨城", x:650, y:310, price:2100 },
+  { name:"栃木", x:630, y:290, price:2000 },
+  { name:"群馬", x:610, y:300, price:2100 },
+  { name:"埼玉", x:600, y:320, price:2500 },
+  { name:"千葉", x:670, y:340, price:2500 },
+  { name:"東京", x:620, y:350, price:3000 },
+  { name:"神奈川", x:600, y:380, price:2700 },
+  { name:"新潟", x:570, y:280, price:2300 },
+  { name:"富山", x:520, y:300, price:2100 },
+  { name:"石川", x:500, y:320, price:2200 },
+  { name:"福井", x:480, y:340, price:2100 },
+  { name:"山梨", x:580, y:350, price:2300 },
+  { name:"長野", x:550, y:360, price:2300 },
+  { name:"岐阜", x:510, y:370, price:2400 },
+  { name:"静岡", x:570, y:410, price:2400 },
+  { name:"愛知", x:540, y:400, price:2800 },
+  { name:"三重", x:520, y:420, price:2300 },
+  { name:"滋賀", x:500, y:430, price:2100 },
+  { name:"京都", x:480, y:450, price:2500 },
+  { name:"大阪", x:460, y:470, price:3000 },
+  { name:"兵庫", x:420, y:460, price:2500 },
+  { name:"奈良", x:460, y:490, price:2100 },
+  { name:"和歌山", x:480, y:510, price:2000 },
+  { name:"鳥取", x:400, y:490, price:2100 },
+  { name:"島根", x:360, y:490, price:2000 },
+  { name:"岡山", x:380, y:520, price:2200 },
+  { name:"広島", x:350, y:530, price:2500 },
+  { name:"山口", x:300, y:540, price:2300 },
+  { name:"徳島", x:470, y:540, price:2000 },
+  { name:"香川", x:460, y:560, price:2100 },
+  { name:"愛媛", x:430, y:570, price:2100 },
+  { name:"高知", x:420, y:590, price:2000 },
+  { name:"福岡", x:320, y:520, price:2800 },
+  { name:"佐賀", x:300, y:510, price:2000 },
+  { name:"長崎", x:260, y:520, price:2100 },
+  { name:"熊本", x:270, y:540, price:2200 },
+  { name:"大分", x:310, y:560, price:2100 },
+  { name:"宮崎", x:350, y:570, price:2000 },
+  { name:"鹿児島", x:250, y:580, price:2400 },
+  { name:"沖縄", x:120, y:620, price:3000 }
+];
+
+// === 47都道府県クイズ（問題と正解）===
+const quizzes = {
+  "北海道": { question:"北海道の有名な料理は何ですか？", answer:"ジンギスカン" },
+  "青森": { question:"青森県の有名な祭りは何ですか？", answer:"ねぶた祭り" },
+  "岩手": { question:"岩手県の世界遺産は何ですか？", answer:"平泉" },
+  "宮城": { question:"宮城県の名物で牛タン以外に有名なものは？", answer:"笹かまぼこ" },
+  "秋田": { question:"秋田県の伝統的な踊りは？", answer:"竿燈祭り" },
+  "山形": { question:"山形県のさくらんぼの品種は？", answer:"佐藤錦" },
+  "福島": { question:"福島県の温泉地はどこ？", answer:"会津若松" },
+  "茨城": { question:"茨城県の偕楽園で有名な花は？", answer:"梅" },
+  "栃木": { question:"栃木県の有名な餃子の街は？", answer:"宇都宮" },
+  "群馬": { question:"群馬県の名物温泉は？", answer:"草津温泉" },
+  "埼玉": { question:"埼玉県の有名な鉄道博物館は？", answer:"鉄道博物館" },
+  "千葉": { question:"千葉県のディズニーリゾートの正式名称は？", answer:"東京ディズニーリゾート" },
+  "東京": { question:"東京の都庁があるのはどの区？", answer:"新宿区" },
+  "神奈川": { question:"神奈川県の有名な中華街は？", answer:"横浜中華街" },
+  "新潟": { question:"新潟県の有名な米の品種は？", answer:"コシヒカリ" },
+  "富山": { question:"富山県の有名な薬売りで使う動物は？", answer:"馬" },
+  "石川": { question:"石川県の金沢市で有名な庭園は？", answer:"兼六園" },
+  "福井": { question:"福井県の恐竜博物館の恐竜は？", answer:"ティラノサウルス" },
+  "山梨": { question:"山梨県の特産品で有名な果物は？", answer:"ぶどう" },
+  "長野": { question:"長野県の善光寺がある市は？", answer:"長野市" },
+  "岐阜": { question:"岐阜県の有名な城は？", answer:"岐阜城" },
+  "静岡": { question:"静岡県の名産茶は？", answer:"静岡茶" },
+  "愛知": { question:"愛知県の有名な祭りは？", answer:"山車祭り" },
+  "三重": { question:"三重県の伊勢神宮がある市は？", answer:"伊勢市" },
+  "滋賀": { question:"滋賀県の大きな湖は？", answer:"琵琶湖" },
+  "京都": { question:"京都府の有名な寺は？", answer:"清水寺" },
+  "大阪": { question:"大阪府の有名な食べ物は？", answer:"たこ焼き" },
+  "兵庫": { question:"兵庫県の神戸牛で有名な市は？", answer:"神戸市" },
+  "奈良": { question:"奈良県で有名な大仏はどこ？", answer:"東大寺" },
+  "和歌山": { question:"和歌山県の有名な城は？", answer:"和歌山城" },
+  "鳥取": { question:"鳥取県の有名な砂丘は？", answer:"鳥取砂丘" },
+  "島根": { question:"島根県の有名な神社は？", answer:"出雲大社" },
+  "岡山": { question:"岡山県の有名な果物は？", answer:"白桃" },
+  "広島": { question:"広島県の有名な原爆ドームのある市は？", answer:"広島市" },
+  "山口": { question:"山口県の有名な橋は？", answer:"錦帯橋" },
+  "徳島": { question:"徳島県の有名な踊りは？", answer:"阿波踊り" },
+  "香川": { question:"香川県の有名なうどんは？", answer:"讃岐うどん" },
+  "愛媛": { question:"愛媛県の特産みかんは？", answer:"温州みかん" },
+  "高知": { question:"高知県の有名な坂本龍馬の出身地は？", answer:"高知市" },
+  "福岡": { question:"福岡県の有名なラーメンは？", answer:"博多ラーメン" },
+  "佐賀": { question:"佐賀県の有名な焼き物は？", answer:"有田焼" },
+  "長崎": { question:"長崎県の有名な教会は？", answer:"大浦天主堂" },
+  "熊本": { question:"熊本県の有名な城は？", answer:"熊本城" },
+  "大分": { question:"大分県の有名な温泉は？", answer:"別府温泉" },
+  "宮崎": { question:"宮崎県の有名な観光地は？", answer:"青島" },
+  "鹿児島": { question:"鹿児島県の有名な火山は？", answer:"桜島" },
+  "沖縄": { question:"沖縄県の有名な伝統料理は？", answer:"ゴーヤチャンプルー" }
+};
+
+// === カード（効果付き） ===
+const cardsData = [
+  {name:"ポイント2倍", desc:"次のクイズ正解時ポイント2倍", effect: (game) => { game.currentPlayer.nextQuizDouble = true; }},
+  {name:"サイコロ+1", desc:"次のサイコロの目に+1", effect: (game) => { game.currentPlayer.nextDiceBonus = 1; }},
+  {name:"貧乏神回避", desc:"次の貧乏神の襲来を回避", effect: (game) => { game.currentPlayer.avoidPoorGod = true; }},
+  {name:"次ターン2回行動", desc:"次のターンにサイコロ2回振れる", effect: (game) => { game.currentPlayer.nextTurnDouble = true; }},
+];
+
+// === プレイヤー初期化 ===
+const players = [
+  {name:"プレイヤー1", color:"red", position:0, money:10000, properties:[], cards:[], nextQuizDouble:false, nextDiceBonus:0, avoidPoorGod:false, nextTurnDouble:false, movesLeft:1},
+  {name:"プレイヤー2", color:"blue", position:0, money:10000, properties:[], cards:[], nextQuizDouble:false, nextDiceBonus:0, avoidPoorGod:false, nextTurnDouble:false, movesLeft:1},
+  {name:"プレイヤー3", color:"green", position:0, money:10000, properties:[], cards:[], nextQuizDouble:false, nextDiceBonus:0, avoidPoorGod:false, nextTurnDouble:false, movesLeft:1},
+  {name:"プレイヤー4", color:"purple", position:0, money:10000, properties:[], cards:[], nextQuizDouble:false, nextDiceBonus:0, avoidPoorGod:false, nextTurnDouble:false, movesLeft:1},
+];
+
+let currentPlayerIndex = 0;
+let turnCount = 1;
+const maxTurns = 20; // 20年でゲーム終了
+
+let poorGodPosition = -1; // 貧乏神初期はどこにもいない
+
+let gameState = "waiting"; // waiting, rolling, quiz, buying, ended
+
+// === DOM ===
+const canvas = document.getElementById("mapCanvas");
+const ctx = canvas.getContext("2d");
+
+const rollDiceBtn = document.getElementById("rollDiceBtn");
+const endTurnBtn = document.getElementById("endTurnBtn");
+const buyPropertyBtn = document.getElementById("buyPropertyBtn");
+
+const playerInfoDiv = document.getElementById("player-info");
+const logDiv = document.getElementById("log");
+
+const cardsDiv = document.getElementById("cards");
+
+const quizBox = document.getElementById("quiz-box");
+const quizQuestionP = document.getElementById("quiz-question");
+const quizAnswerInput = document.getElementById("quiz-answer");
+const submitQuizBtn = document.getElementById("submitQuizBtn");
+const quizFeedbackP = document.getElementById("quiz-feedback");
+
+// === ユーティリティ ===
+function log(text) {
+  logDiv.innerHTML += text + "<br>";
+  logDiv.scrollTop = logDiv.scrollHeight;
+}
+
+function drawStation(station, idx) {
+  const radius = 15;
+  ctx.beginPath();
+  ctx.fillStyle = "white";
+  ctx.strokeStyle = "#333";
+  ctx.lineWidth = 2;
+  ctx.arc(station.x, station.y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // 所持者の色で縁取り
+  if (station.owner !== undefined) {
+    ctx.strokeStyle = players[station.owner].color;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(station.x, station.y, radius - 3, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // 駅名
+  ctx.fillStyle = "#004080";
+  ctx.font = "12px 'Segoe UI'";
+  ctx.textAlign = "center";
+  ctx.fillText(station.name, station.x, station.y - radius - 5);
+
+  // 値段表示
+  ctx.fillStyle = "#0078d7";
+  ctx.font = "10px 'Segoe UI'";
+  ctx.fillText(station.price + "円", station.x, station.y + radius + 12);
+
+  // 貧乏神表示
+  if (poorGodPosition === idx) {
+    ctx.fillStyle = "black";
+    ctx.font = "20px 'Segoe UI'";
+    ctx.fillText("👹", station.x, station.y + 5);
+  }
+}
+
+function drawPlayers() {
+  players.forEach((p, i) => {
+    const station = stations[p.position];
+    const radius = 8;
+    const offsetX = (i % 2) * 18 - 9;
+    const offsetY = Math.floor(i / 2) * 18 - 9;
+    ctx.beginPath();
+    ctx.fillStyle = p.color;
+    ctx.arc(station.x + offsetX, station.y + offsetY, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "white";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  });
+}
+
+function drawMap() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  stations.forEach((station, idx) => drawStation(station, idx));
+  drawPlayers();
+}
+
+// 現プレイヤー取得
+function get currentPlayer() { return players[currentPlayerIndex]; }
+
+// UI更新
+function updateUI() {
+  const p = currentPlayer;
+  let html = `<b>現在のターン: プレイヤー${currentPlayerIndex + 1} (${p.name})</b><br>`;
+  html += `ターン数: ${turnCount} / ${maxTurns}<br>`;
+  html += `所持金: ${p.money} 円<br>`;
+  html += `現在地: ${stations[p.position].name}<br>`;
+  html += `物件: ${p.properties.length === 0 ? "なし" : p.properties.map(i => stations[i].name).join(", ")}<br>`;
+  playerInfoDiv.innerHTML = html;
+
+  buyPropertyBtn.disabled = gameState !== "buying";
+  endTurnBtn.disabled = gameState !== "waiting" && gameState !== "buying";
+
+  rollDiceBtn.disabled = gameState !== "waiting";
+  cardsDiv.innerHTML = "";
+  p.cards.forEach((card, i) => {
+    const c = document.createElement("div");
+    c.className = "card";
+    c.textContent = card.name;
+    c.title = card.desc;
+    c.onclick = () => {
+      if (card.used) return;
+      card.effect(game);
+      card.used = true;
+      c.classList.add("used");
+      log(`プレイヤー${currentPlayerIndex + 1}がカード「${card.name}」を使った！`);
+      updateUI();
+    };
+    cardsDiv.appendChild(c);
+  });
+
+  if (gameState === "quiz") {
+    quizBox.style.display = "block";
+    quizAnswerInput.value = "";
+    quizFeedbackP.textContent = "";
+    quizAnswerInput.focus();
+  } else {
+    quizBox.style.display = "none";
+  }
+}
+
+// サイコロを振る（1〜6）
+function rollDice() {
+  let base = Math.floor(Math.random() * 6) + 1;
+  const p = currentPlayer;
+  if (p.nextDiceBonus) {
+    base += p.nextDiceBonus;
+    p.nextDiceBonus = 0;
+  }
+  if (base > 6) base = 6;
+  log(`プレイヤー${currentPlayerIndex + 1}のサイコロの目は ${base} ！`);
+  return base;
+}
+
+// 移動処理
+function movePlayer(steps) {
+  const p = currentPlayer;
+  p.position += steps;
+  if (p.position >= stations.length) {
+    p.position = p.position % stations.length;
+    log(`プレイヤー${currentPlayerIndex + 1}は一周しました！`);
+  }
+  drawMap();
+  checkStationEvent();
+}
+
+// 駅イベントチェック
+function checkStationEvent() {
+  const p = currentPlayer;
+  const pos = p.position;
+  const station = stations[pos];
+
+  // 貧乏神がいる場合
+  if (poorGodPosition === pos && !p.avoidPoorGod) {
+    const loss = Math.min(1000, p.money);
+    p.money -= loss;
+    log(`💀 貧乏神が襲来！プレイヤー${currentPlayerIndex + 1}は${loss}円失った！`);
+  } else if (poorGodPosition === pos && p.avoidPoorGod) {
+    log(`👹 貧乏神襲来をカードで回避！`);
+    p.avoidPoorGod = false;
+  }
+
+  // クイズ駅
+  if (quizzes[station.name]) {
+    log(`📝 クイズ駅「${station.name}」に到着！クイズに答えよう！`);
+    gameState = "quiz";
+    updateUI();
+    return;
+  }
+
+  // 物件購入可能
+  if (station.owner === undefined) {
+    log(`🏠 「${station.name}」はまだ購入されていません。購入できます。`);
+    gameState = "buying";
+    updateUI();
+  } else if (station.owner !== currentPlayerIndex) {
+    // 他プレイヤーの物件の場合は通過料を支払う
+    const fee = Math.floor(station.price * 0.3);
+    p.money -= fee;
+    players[station.owner].money += fee;
+    log(`💰 プレイヤー${currentPlayerIndex + 1}はプレイヤー${station.owner + 1}の物件「${station.name}」に止まり、${fee}円の通過料を支払った。`);
+    gameState = "waiting";
+    updateUI();
+  } else {
+    log(`🏠 自分の物件「${station.name}」に到着。`);
+    gameState = "waiting";
+    updateUI();
+  }
+}
+
+// クイズ回答処理
+function submitQuiz() {
+  const p = currentPlayer;
+  const station = stations[p.position];
+  const quiz = quizzes[station.name];
+  const answer = quizAnswerInput.value.trim();
+  if (!answer) return;
+
+  // 正誤判定（完全一致 or 大文字小文字無視）
+  if (answer === quiz.answer || answer.toLowerCase() === quiz.answer.toLowerCase()) {
+    const basePoint = 1000;
+    const point = p.nextQuizDouble ? basePoint * 2 : basePoint;
+    p.money += point;
+    log(`✅ 正解！${point}円ゲット！`);
+    p.nextQuizDouble = false;
+  } else {
+    log(`❌ 不正解。正解は「${quiz.answer}」です。`);
+  }
+  gameState = "waiting";
+  updateUI();
+}
+
+// 物件購入処理
+function buyProperty() {
+  const p = currentPlayer;
+  const pos = p.position;
+  const station = stations[pos];
+  if (station.owner !== undefined) {
+    alert("すでに誰かが所有しています！");
+    return;
+  }
+  if (p.money < station.price) {
+    alert("所持金が足りません！");
+    return;
+  }
+  p.money -= station.price;
+  station.owner = currentPlayerIndex;
+  p.properties.push(pos);
+  log(`🏠 プレイヤー${currentPlayerIndex + 1}が「${station.name}」を購入しました。`);
+  gameState = "waiting";
+  updateUI();
+}
+
+// ターン終了処理
+function endTurn() {
+  let p = currentPlayer;
+
+  // 次ターン2回行動チェック
+  if (p.nextTurnDouble) {
+    p.nextTurnDouble = false;
+    p.movesLeft = 2;
+    log(`🎉 次のターンは2回行動できます！`);
+  } else {
+    p.movesLeft = 1;
+  }
+
+  currentPlayerIndex++;
+  if (currentPlayerIndex >= players.length) {
+    currentPlayerIndex = 0;
+    turnCount++;
+    // 貧乏神をランダムに移動
+    movePoorGod();
+  }
+
+  if (turnCount > maxTurns) {
+    gameState = "ended";
+    endGame();
+  } else {
+    gameState = "waiting";
+    updateUI();
+    log(`-----------------------`);
+    log(`🎯 ターン ${turnCount} 開始 - プレイヤー${currentPlayerIndex + 1}の番`);
+  }
+}
+
+// 貧乏神移動
+function movePoorGod() {
+  if (poorGodPosition === -1) {
+    poorGodPosition = Math.floor(Math.random() * stations.length);
+    log(`👹 貧乏神が「${stations[poorGodPosition].name}」に現れた！`);
+  } else {
+    let newPos;
+    do {
+      newPos = Math.floor(Math.random() * stations.length);
+    } while (newPos === poorGodPosition);
+    poorGodPosition = newPos;
+    log(`👹 貧乏神が「${stations[poorGodPosition].name}」に移動した！`);
+  }
+  drawMap();
+}
+
+// ゲーム終了処理
+function endGame() {
+  let winner = players[0];
+  players.forEach(p => {
+    if (p.money > winner.money) winner = p;
+  });
+  log(`🏆 ゲーム終了！勝者は ${winner.name}！所持金: ${winner.money}円`);
+  alert(`ゲーム終了！勝者は ${winner.name} です！`);
+  rollDiceBtn.disabled = true;
+  buyPropertyBtn.disabled = true;
+  endTurnBtn.disabled = true;
+}
+
+// イベントハンドラ登録
+rollDiceBtn.onclick = () => {
+  if (gameState !== "waiting") return;
+  const dice = rollDice();
+  movePlayer(dice);
+  rollDiceBtn.disabled = true;
+  endTurnBtn.disabled = false;
+};
+
+submitQuizBtn.onclick = () => {
+  if (gameState !== "quiz") return;
+  submitQuiz();
+};
+
+buyPropertyBtn.onclick = () => {
+  if (gameState !== "buying") return;
+  buyProperty();
+};
+
+endTurnBtn.onclick = () => {
+  if (gameState !== "waiting" && gameState !== "buying") return;
+  endTurn();
+  rollDiceBtn.disabled = false;
+  endTurnBtn.disabled = true;
+};
+
+// ゲームオブジェクト（カード効果に使う）
+const game = {
+  currentPlayer: null
+};
+
+// ゲーム開始
+function startGame() {
+  game.currentPlayer = players[currentPlayerIndex];
+  log(`🎮 ゲーム開始！プレイヤー数: ${players.length}`);
+  log(`-----------------------`);
+  log(`🎯 ターン ${turnCount} 開始 - プレイヤー${currentPlayerIndex + 1}の番`);
+  gameState = "waiting";
+  updateUI();
+  drawMap();
+}
+
+startGame();
+
+// UIの常時更新
+setInterval(() => {
+  game.currentPlayer = players[currentPlayerIndex];
+  updateUI();
+}, 1000);
+
+</script>
+</body>
+</html>
